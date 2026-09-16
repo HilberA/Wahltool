@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /polls/{pollId} {
+      // Fragestellung/Optionen/Status sind über den Link öffentlich lesbar
+      // (sonst könnte der Stimmzettel gar nicht angezeigt werden).
+      allow read: if true;
+
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+
+      allow update: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid;
+
+      allow delete: if false;
+
+      match /tokens/{tokenId} {
+        // Die Token-Liste selbst darf nur die Admin-Person einsehen.
+        allow read: if request.auth != null
+                    && get(/databases/$(database)/documents/polls/$(pollId)).data.ownerUid == request.auth.uid;
+
+        allow create: if request.auth != null
+                      && get(/databases/$(database)/documents/polls/$(pollId)).data.ownerUid == request.auth.uid;
+
+        // Ein Token darf nur EINMAL von "nicht benutzt" auf "benutzt" wechseln,
+        // und es dürfen dabei ausschließlich diese beiden Felder verändert werden.
+        allow update: if resource.data.used == false
+                      && request.resource.data.used == true
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used', 'usedAt']);
+
+        allow delete: if false;
+      }
+
+      match /votes/{voteId} {
+        // Stimmen enthalten absichtlich keinen Verweis auf den Token oder eine
+        // Nutzer-Identität – nur die gewählte Option.
+        allow create: if request.resource.data.keys().hasOnly(['optionIndex', 'createdAt'])
+                      && request.resource.data.optionIndex is int;
+
+        allow read: if get(/databases/$(database)/documents/polls/$(pollId)).data.resultsVisibility == 'public'
+                    || (request.auth != null
+                        && get(/databases/$(database)/documents/polls/$(pollId)).data.ownerUid == request.auth.uid);
+
+        allow update, delete: if false;
+      }
+    }
+  }
+}
