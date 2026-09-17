@@ -79,16 +79,34 @@ export default function Results() {
   const closesAtDate = toDate(poll.closesAt)
   const generatedAt = new Date().toLocaleString('de-DE')
 
+  const [closing, setClosing] = useState(false)
+
   async function handleClose() {
     if (!confirm('Abstimmung wirklich beenden? Danach können keine weiteren Stimmen abgegeben werden.')) return
-    await closePoll(pollId)
-    setPoll((p) => ({ ...p, status: 'closed' }))
+    setClosing(true)
+    try {
+      await closePoll(pollId)
+      setPoll((p) => ({ ...p, status: 'closed' }))
+    } catch (err) {
+      console.error(err)
+      alert('Beenden fehlgeschlagen: ' + (err.message || err.code || 'unbekannter Fehler'))
+    } finally {
+      setClosing(false)
+    }
   }
 
   async function handleClearAutoClose() {
     if (!confirm('Automatischen Schließzeitpunkt entfernen? Die Abstimmung nimmt danach wieder Stimmen an (falls sie nicht manuell beendet wurde).')) return
-    await clearAutoClose(pollId)
-    setPoll((p) => ({ ...p, closesAt: null }))
+    setClosing(true)
+    try {
+      await clearAutoClose(pollId)
+      setPoll((p) => ({ ...p, closesAt: null }))
+    } catch (err) {
+      console.error(err)
+      alert('Zurücksetzen fehlgeschlagen: ' + (err.message || err.code || 'unbekannter Fehler'))
+    } finally {
+      setClosing(false)
+    }
   }
 
   return (
@@ -172,12 +190,12 @@ export default function Results() {
           Als PDF drucken
         </button>
         {poll.status === 'open' && (
-          <button className="btn-ghost" onClick={handleClose}>
+          <button className="btn-ghost" onClick={handleClose} disabled={closing}>
             Abstimmung beenden
           </button>
         )}
         {poll.status === 'open' && closesAtDate && (
-          <button className="btn-ghost" onClick={handleClearAutoClose}>
+          <button className="btn-ghost" onClick={handleClearAutoClose} disabled={closing}>
             Automatischen Ablauf zurücksetzen
           </button>
         )}
