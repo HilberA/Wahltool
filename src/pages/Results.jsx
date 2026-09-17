@@ -3,16 +3,24 @@ import { useParams } from 'react-router-dom'
 import { getPoll, subscribeToResults, closePoll, clearAutoClose } from '../services'
 import { isPollOpen, isAutoExpired, toDate } from '../services/pollStatus'
 
-function toCsv(poll, counts, total) {
-  const rows = [['Option', 'Stimmen', 'Anteil']]
-  poll.options.forEach((option, i) => {
-    const c = counts[i] || 0
-    const pct = total > 0 ? ((c / total) * 100).toFixed(1) : '0.0'
-    rows.push([option, String(c), `${pct}%`])
+function toCsv(poll, votes, total) {
+  const rows = []
+  poll.questions.forEach((question, qIndex) => {
+    const counts = {}
+    votes.forEach((v) => {
+      const a = v.answers?.[qIndex]
+      if (a != null) counts[a] = (counts[a] || 0) + 1
+    })
+    rows.push([`Frage ${qIndex + 1}: ${question.text}`])
+    rows.push(['Option', 'Stimmen', 'Anteil'])
+    question.options.forEach((option, oIndex) => {
+      const c = counts[oIndex] || 0
+      const pct = total > 0 ? ((c / total) * 100).toFixed(1) : '0.0'
+      rows.push([option, String(c), `${pct}%`])
+    })
+    rows.push([])
   })
-  rows.push([])
-  rows.push(['Frage', poll.question])
-  rows.push(['Gesamtstimmen', String(total)])
+  rows.push(['Gesamtzahl Stimmzettel', String(total)])
   return rows.map((r) => r.map(escapeCsvCell).join(',')).join('\n')
 }
 
@@ -35,11 +43,79 @@ function downloadFile(filename, content, mime) {
   URL.revokeObjectURL(url)
 }
 
+function QuestionResult({ question, votes, total }) {
+  const counts = {}
+  votes.forEach((v) => {
+    const a = v.answers?.[question.qIndex]
+    if (a != null) counts[a] = (counts[a] || 0) + 1
+  })
+  const maxCount = Math.max(1, ...question.options.map((_, i) => counts[i] || 0))
+
+  return (
+    <div className="card chart-card">
+      <h3 style={{ marginBottom: '0.75rem' }}>{question.text}</h3>
+      {question.options.map((option, i) => {
+        const c = counts[i] || 0
+        const pct = total > 0 ? Math.round((c / total) * 100) : 0
+        return (
+          <div className="bar-row" key={i}>
+            <div className="bar-label">
+              <span>{option}</span>
+              <span>
+                {c} · {pct}%
+              </span>
+            </div>
+            <div className="bar-track">
+              <div className="bar-fill" style={{ width: `${(c / maxCount) * 100}%` }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function QuestionTable({ question, votes, total }) {
+  const counts = {}
+  votes.forEach((v) => {
+    const a = v.answers?.[question.qIndex]
+    if (a != null) counts[a] = (counts[a] || 0) + 1
+  })
+  return (
+    <div className="print-only">
+      <h4 style={{ marginBottom: '0.4rem' }}>{question.text}</h4>
+      <table className="results-table" style={{ marginBottom: '1.5rem' }}>
+        <thead>
+          <tr>
+            <th>Option</th>
+            <th>Stimmen</th>
+            <th>Anteil</th>
+          </tr>
+        </thead>
+        <tbody>
+          {question.options.map((option, i) => {
+            const c = counts[i] || 0
+            const pct = total > 0 ? Math.round((c / total) * 100) : 0
+            return (
+              <tr key={i}>
+                <td>{option}</td>
+                <td>{c}</td>
+                <td>{pct}%</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function Results() {
   const { pollId } = useParams()
   const [poll, setPoll] = useState(null)
   const [votes, setVotes] = useState([])
   const [error, setError] = useState(null)
+  const [closing, setClosing] = useState(false)
 
   useEffect(() => {
     getPoll(pollId)
@@ -68,18 +144,11 @@ export default function Results() {
     return <p>Lädt …</p>
   }
 
-  const counts = {}
-  votes.forEach((v) => {
-    counts[v.optionIndex] = (counts[v.optionIndex] || 0) + 1
-  })
   const total = votes.length
-  const maxCount = Math.max(1, ...poll.options.map((_, i) => counts[i] || 0))
   const open = isPollOpen(poll)
   const autoExpired = isAutoExpired(poll)
   const closesAtDate = toDate(poll.closesAt)
   const generatedAt = new Date().toLocaleString('de-DE')
-
-  const [closing, setClosing] = useState(false)
 
   async function handleClose() {
     if (!confirm('Abstimmung wirklich beenden? Danach können keine weiteren Stimmen abgegeben werden.')) return
@@ -116,13 +185,13 @@ export default function Results() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <h2>{poll.question}</h2>
+        <h2>Auswertung</h2>
         <span className={`pill ${open ? 'pill-ok' : ''}`}>
           {open ? 'offen' : autoExpired ? 'automatisch geschlossen' : 'geschlossen'}
         </span>
       </div>
       <p style={{ color: 'var(--ink-soft)' }}>
-        {total} Stimme{total === 1 ? '' : 'n'} bisher · aktualisiert live
+        {total} Stimmzettel bisher · aktualisiert live
         {closesAtDate && (
           <>
             {' · schließt automatisch am '}
@@ -131,58 +200,21 @@ export default function Results() {
         )}
       </p>
 
-      <div className="card chart-card">
-        {poll.options.map((option, i) => {
-          const c = counts[i] || 0
-          const pct = total > 0 ? Math.round((c / total) * 100) : 0
-          return (
-            <div className="bar-row" key={i}>
-              <div className="bar-label">
-                <span>{option}</span>
-                <span>
-                  {c} · {pct}%
-                </span>
-              </div>
-              <div className="bar-track">
-                <div className="bar-fill" style={{ width: `${(c / maxCount) * 100}%` }} />
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      {poll.questions.map((question, qIndex) => (
+        <QuestionResult key={qIndex} question={{ ...question, qIndex }} votes={votes} total={total} />
+      ))}
 
-      <table className="print-only results-table">
-        <thead>
-          <tr>
-            <th>Option</th>
-            <th>Stimmen</th>
-            <th>Anteil</th>
-          </tr>
-        </thead>
-        <tbody>
-          {poll.options.map((option, i) => {
-            const c = counts[i] || 0
-            const pct = total > 0 ? Math.round((c / total) * 100) : 0
-            return (
-              <tr key={i}>
-                <td>{option}</td>
-                <td>{c}</td>
-                <td>{pct}%</td>
-              </tr>
-            )
-          })}
-          <tr>
-            <td><strong>Gesamt</strong></td>
-            <td><strong>{total}</strong></td>
-            <td></td>
-          </tr>
-        </tbody>
-      </table>
+      {poll.questions.map((question, qIndex) => (
+        <QuestionTable key={qIndex} question={{ ...question, qIndex }} votes={votes} total={total} />
+      ))}
+      <p className="print-only" style={{ fontSize: '0.85rem' }}>
+        <strong>Gesamtzahl Stimmzettel:</strong> {total}
+      </p>
 
       <div className="card" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
         <button
           className="btn-ghost"
-          onClick={() => downloadFile(`abstimmung-${pollId}.csv`, toCsv(poll, counts, total), 'text/csv;charset=utf-8')}
+          onClick={() => downloadFile(`abstimmung-${pollId}.csv`, toCsv(poll, votes, total), 'text/csv;charset=utf-8')}
         >
           Als CSV exportieren
         </button>

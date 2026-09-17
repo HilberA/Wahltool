@@ -4,7 +4,7 @@ import { getPoll, castVote } from '../services'
 import { normalizeCodeInput } from '../services/tokenUtils'
 import { isPollOpen } from '../services/pollStatus'
 
-// step: 'code' (Code eingeben) -> 'ballot' (auswählen) -> 'done' (bestätigt)
+// step: 'code' (Code eingeben) -> 'ballot' (alle Fragen auf einmal beantworten) -> 'done'
 // Nach 'done' kann über "Nächste Person" wieder zu 'code' gesprungen werden,
 // damit dasselbe Gerät direkt für die nächste Person genutzt werden kann.
 
@@ -15,7 +15,7 @@ export default function Vote() {
 
   const [step, setStep] = useState('code')
   const [codeInput, setCodeInput] = useState('')
-  const [selected, setSelected] = useState(null)
+  const [answers, setAnswers] = useState([]) // ein Options-Index pro Frage, oder null
   const [status, setStatus] = useState('idle') // idle | submitting | error
   const [voteError, setVoteError] = useState(null)
 
@@ -28,6 +28,7 @@ export default function Vote() {
           setLoadError('Diese Abstimmung ist bereits beendet.')
         } else {
           setPoll(p)
+          setAnswers(new Array(p.questions.length).fill(null))
         }
       })
       .catch(() => setLoadError('Die Abstimmung konnte nicht geladen werden.'))
@@ -43,12 +44,18 @@ export default function Vote() {
     setStep('ballot')
   }
 
+  function selectAnswer(qIndex, oIndex) {
+    setAnswers((prev) => prev.map((a, i) => (i === qIndex ? oIndex : a)))
+  }
+
+  const allAnswered = answers.length > 0 && answers.every((a) => a !== null)
+
   async function handleSubmitVote() {
-    if (selected === null) return
+    if (!allAnswered) return
     setStatus('submitting')
     setVoteError(null)
     try {
-      await castVote(pollId, normalizeCodeInput(codeInput), selected)
+      await castVote(pollId, normalizeCodeInput(codeInput), answers)
       setStep('done')
       setStatus('idle')
     } catch (err) {
@@ -65,7 +72,7 @@ export default function Vote() {
 
   function handleNextPerson() {
     setCodeInput('')
-    setSelected(null)
+    setAnswers(poll ? new Array(poll.questions.length).fill(null) : [])
     setStatus('idle')
     setVoteError(null)
     setStep('code')
@@ -103,7 +110,6 @@ export default function Vote() {
   if (step === 'code') {
     return (
       <div>
-        <h2>{poll.question}</h2>
         <p style={{ color: 'var(--ink-soft)' }}>
           Gib deinen persönlichen Stimmzettel-Code ein, um abzustimmen.
         </p>
@@ -133,33 +139,40 @@ export default function Vote() {
 
   return (
     <div>
-      <h2>{poll.question}</h2>
-      <p style={{ color: 'var(--ink-soft)' }}>Wähle eine Option. Deine Stimme wird anonym erfasst.</p>
+      <p style={{ color: 'var(--ink-soft)' }}>
+        {poll.questions.length > 1
+          ? `Beantworte alle ${poll.questions.length} Fragen. Deine Stimme wird anonym erfasst.`
+          : 'Wähle eine Option. Deine Stimme wird anonym erfasst.'}
+      </p>
 
-      <div className="card">
-        {poll.options.map((option, i) => (
-          <label className={`ballot-choice ${selected === i ? 'selected' : ''}`} key={i}>
-            <input type="radio" name="option" checked={selected === i} onChange={() => setSelected(i)} />
-            {option}
-          </label>
-        ))}
-
-        {voteError && <div className="notice">{voteError}</div>}
-
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
-          <button
-            className="btn-primary"
-            disabled={selected === null || status === 'submitting'}
-            onClick={handleSubmitVote}
-          >
-            {status === 'submitting' ? 'Wird gesendet …' : 'Stimme abgeben'}
-          </button>
-          {status !== 'submitting' && (
-            <button className="btn-ghost" onClick={handleBackToCode}>
-              Code korrigieren
-            </button>
-          )}
+      {poll.questions.map((question, qIndex) => (
+        <div className="card" key={qIndex}>
+          <h3 style={{ marginBottom: '0.75rem' }}>{question.text}</h3>
+          {question.options.map((option, oIndex) => (
+            <label className={`ballot-choice ${answers[qIndex] === oIndex ? 'selected' : ''}`} key={oIndex}>
+              <input
+                type="radio"
+                name={`question-${qIndex}`}
+                checked={answers[qIndex] === oIndex}
+                onChange={() => selectAnswer(qIndex, oIndex)}
+              />
+              {option}
+            </label>
+          ))}
         </div>
+      ))}
+
+      {voteError && <div className="notice">{voteError}</div>}
+
+      <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <button className="btn-primary" disabled={!allAnswered || status === 'submitting'} onClick={handleSubmitVote}>
+          {status === 'submitting' ? 'Wird gesendet …' : 'Stimme abgeben'}
+        </button>
+        {status !== 'submitting' && (
+          <button className="btn-ghost" onClick={handleBackToCode}>
+            Code korrigieren
+          </button>
+        )}
       </div>
     </div>
   )

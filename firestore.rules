@@ -45,10 +45,11 @@ service cloud.firestore {
       }
 
       match /votes/{voteId} {
-        // Stimmen enthalten absichtlich keinen Verweis auf den Code oder eine
-        // Nutzer-Identität – nur die gewählte Option.
-        allow create: if request.resource.data.keys().hasOnly(['optionIndex', 'createdAt'])
-                      && request.resource.data.optionIndex is int;
+        // Stimmzettel enthalten absichtlich keinen Verweis auf den Code oder eine
+        // Nutzer-Identität – nur die Antworten (eine pro Frage der Umfrage).
+        allow create: if request.resource.data.keys().hasOnly(['answers', 'createdAt'])
+                      && request.resource.data.answers is list
+                      && request.resource.data.answers.size() == pollData(pollId).questions.size();
 
         allow read: if pollData(pollId).resultsVisibility == 'public' || isOwner(pollId);
 

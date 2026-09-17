@@ -4,9 +4,12 @@ import { createPoll } from '../services'
 import { formatCodeForDisplay } from '../services/tokenUtils'
 import QrCode from '../components/QrCode'
 
+function emptyQuestion() {
+  return { text: '', options: ['', ''] }
+}
+
 export default function AdminCreatePoll() {
-  const [question, setQuestion] = useState('')
-  const [options, setOptions] = useState(['', ''])
+  const [questions, setQuestions] = useState([emptyQuestion()])
   const [tokenCount, setTokenCount] = useState(20)
   const [visibility, setVisibility] = useState('admin')
   const [closesAtInput, setClosesAtInput] = useState('') // datetime-local string, optional
@@ -14,29 +17,57 @@ export default function AdminCreatePoll() {
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
 
-  function updateOption(index, value) {
-    setOptions((prev) => prev.map((o, i) => (i === index ? value : o)))
+  function updateQuestionText(qIndex, value) {
+    setQuestions((prev) => prev.map((q, i) => (i === qIndex ? { ...q, text: value } : q)))
   }
 
-  function addOption() {
-    setOptions((prev) => [...prev, ''])
+  function updateOption(qIndex, oIndex, value) {
+    setQuestions((prev) =>
+      prev.map((q, i) =>
+        i === qIndex ? { ...q, options: q.options.map((o, j) => (j === oIndex ? value : o)) } : q
+      )
+    )
   }
 
-  function removeOption(index) {
-    setOptions((prev) => prev.filter((_, i) => i !== index))
+  function addOption(qIndex) {
+    setQuestions((prev) => prev.map((q, i) => (i === qIndex ? { ...q, options: [...q.options, ''] } : q)))
+  }
+
+  function removeOption(qIndex, oIndex) {
+    setQuestions((prev) =>
+      prev.map((q, i) => (i === qIndex ? { ...q, options: q.options.filter((_, j) => j !== oIndex) } : q))
+    )
+  }
+
+  function addQuestion() {
+    setQuestions((prev) => [...prev, emptyQuestion()])
+  }
+
+  function removeQuestion(qIndex) {
+    setQuestions((prev) => prev.filter((_, i) => i !== qIndex))
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
-    const cleanOptions = options.map((o) => o.trim()).filter(Boolean)
-    if (!question.trim()) {
-      setError('Bitte eine Frage eingeben.')
+
+    const cleanQuestions = questions
+      .map((q) => ({ text: q.text.trim(), options: q.options.map((o) => o.trim()).filter(Boolean) }))
+      .filter((q) => q.text || q.options.length > 0)
+
+    if (cleanQuestions.length === 0) {
+      setError('Bitte mindestens eine Frage eingeben.')
       return
     }
-    if (cleanOptions.length < 2) {
-      setError('Bitte mindestens zwei Antwortoptionen angeben.')
-      return
+    for (const q of cleanQuestions) {
+      if (!q.text) {
+        setError('Bitte bei jeder Frage einen Text eingeben.')
+        return
+      }
+      if (q.options.length < 2) {
+        setError(`Bitte bei "${q.text}" mindestens zwei Antwortoptionen angeben.`)
+        return
+      }
     }
     if (tokenCount < 1 || tokenCount > 2000) {
       setError('Die Teilnehmerzahl muss zwischen 1 und 2000 liegen.')
@@ -54,8 +85,7 @@ export default function AdminCreatePoll() {
     setBusy(true)
     try {
       const { pollId, tokens } = await createPoll({
-        question: question.trim(),
-        options: cleanOptions,
+        questions: cleanQuestions,
         resultsVisibility: visibility,
         tokenCount: Number(tokenCount),
         closesAt
@@ -80,12 +110,12 @@ export default function AdminCreatePoll() {
         <h2>Umfrage erstellt</h2>
         <div className="notice">
           Ein Link/QR-Code für alle – aber jede Person braucht ihren eigenen Code aus der Liste
-          unten, um tatsächlich abstimmen zu können. Ein Code funktioniert nur einmal, egal auf
-          welchem Gerät er eingegeben wird.
+          unten, um tatsächlich abstimmen zu können. Ein Code funktioniert nur einmal und deckt
+          alle Fragen der Umfrage ab, egal auf welchem Gerät er eingegeben wird.
         </div>
 
         <div className="card">
-          <h3>1. Link bzw. QR-Code auflegen</h3>
+          <h3>1. Link bzw. QR-Code zum Abstimmen auflegen</h3>
           <p>Diesen einen Link kannst du z. B. als QR-Code am Tisch platzieren. Alle öffnen dieselbe Seite.</p>
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <QrCode value={voteUrl} />
@@ -118,10 +148,16 @@ export default function AdminCreatePoll() {
 
         <div className="card">
           <h3>3. Auswertung</h3>
-          <Link className="btn btn-primary" to={`/results/${result.pollId}`}>
-            Zur Auswertung
-          </Link>
-          <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--ink-soft)' }}>{resultsUrl}</p>
+          <p>Auch dafür gibt es einen eigenen Link/QR-Code, z. B. um ihn live auf eine Leinwand zu projizieren.</p>
+          <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <QrCode value={resultsUrl} />
+            <div>
+              <div className="token-list" style={{ maxHeight: 'none' }}>{resultsUrl}</div>
+              <Link className="btn btn-primary" style={{ marginTop: '0.75rem' }} to={`/results/${result.pollId}`}>
+                Zur Auswertung
+              </Link>
+            </div>
+          </div>
         </div>
 
         <Link to="/admin" className="btn-ghost">
@@ -135,38 +171,52 @@ export default function AdminCreatePoll() {
     <div>
       <h2>Neue Abstimmung</h2>
       <form className="card" onSubmit={handleSubmit}>
-        <div className="field">
-          <label htmlFor="question">Frage</label>
-          <input
-            id="question"
-            type="text"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="z. B. Soll der Vereinsbeitrag angehoben werden?"
-          />
-        </div>
-
-        <div className="field">
-          <label>Antwortoptionen</label>
-          {options.map((option, i) => (
-            <div className="option-row" key={i}>
-              <input
-                type="text"
-                value={option}
-                onChange={(e) => updateOption(i, e.target.value)}
-                placeholder={`Option ${i + 1}`}
-              />
-              {options.length > 2 && (
-                <button type="button" onClick={() => removeOption(i)} aria-label="Option entfernen">
-                  ✕
+        {questions.map((question, qIndex) => (
+          <div key={qIndex} style={{ borderTop: qIndex > 0 ? '1px solid var(--line)' : 'none', paddingTop: qIndex > 0 ? '1.25rem' : 0, marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--ink-soft)' }}>Frage {qIndex + 1}</label>
+              {questions.length > 1 && (
+                <button type="button" className="btn-ghost" style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }} onClick={() => removeQuestion(qIndex)}>
+                  Frage entfernen
                 </button>
               )}
             </div>
-          ))}
-          <button type="button" className="btn-ghost" onClick={addOption}>
-            + Option hinzufügen
-          </button>
-        </div>
+            <div className="field">
+              <input
+                type="text"
+                value={question.text}
+                onChange={(e) => updateQuestionText(qIndex, e.target.value)}
+                placeholder="z. B. Wer soll Vorsitzende:r werden?"
+              />
+            </div>
+
+            <div className="field">
+              <label>Antwortoptionen</label>
+              {question.options.map((option, oIndex) => (
+                <div className="option-row" key={oIndex}>
+                  <input
+                    type="text"
+                    value={option}
+                    onChange={(e) => updateOption(qIndex, oIndex, e.target.value)}
+                    placeholder={`Option ${oIndex + 1}`}
+                  />
+                  {question.options.length > 2 && (
+                    <button type="button" onClick={() => removeOption(qIndex, oIndex)} aria-label="Option entfernen">
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button type="button" className="btn-ghost" onClick={() => addOption(qIndex)}>
+                + Option hinzufügen
+              </button>
+            </div>
+          </div>
+        ))}
+
+        <button type="button" className="btn-ghost" onClick={addQuestion} style={{ marginBottom: '1.5rem' }}>
+          + Weitere Frage hinzufügen
+        </button>
 
         <div className="field">
           <label htmlFor="tokenCount">Anzahl Codes (= max. Teilnehmerzahl)</label>

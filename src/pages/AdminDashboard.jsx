@@ -4,12 +4,14 @@ import { listMyPolls, deletePoll } from '../services'
 import { isPollOpen, isAutoExpired, toDate } from '../services/pollStatus'
 import { useAdminUser } from '../hooks/useAdminUser'
 import { adminSignOut } from '../lib/firebase'
+import QrCode from '../components/QrCode'
 
 export default function AdminDashboard() {
   const user = useAdminUser()
   const [polls, setPolls] = useState(null)
   const [error, setError] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
+  const [qrOpenId, setQrOpenId] = useState(null)
 
   function load() {
     listMyPolls()
@@ -26,7 +28,8 @@ export default function AdminDashboard() {
   }, [])
 
   async function handleDelete(poll) {
-    if (!confirm(`"${poll.question}" wirklich unwiderruflich löschen? Das kann nicht rückgängig gemacht werden.`)) return
+    const label = poll.questions?.[0]?.text || 'diese Umfrage'
+    if (!confirm(`"${label}" wirklich unwiderruflich löschen? Das kann nicht rückgängig gemacht werden.`)) return
     setDeletingId(poll.id)
     try {
       await deletePoll(poll.id)
@@ -80,16 +83,23 @@ export default function AdminDashboard() {
             const open = isPollOpen(poll)
             const autoExpired = isAutoExpired(poll)
             const closesAtDate = toDate(poll.closesAt)
+            const questionCount = poll.questions?.length || 0
+            const title = questionCount === 1 ? poll.questions[0].text : `${questionCount} Fragen`
+            const baseUrl = window.location.origin
+            const voteUrl = `${baseUrl}/vote/${poll.id}`
+            const resultsUrl = `${baseUrl}/results/${poll.id}`
+            const qrOpen = qrOpenId === poll.id
+
             return (
               <div className="card" key={poll.id}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <h3 style={{ marginBottom: '0.4rem' }}>{poll.question}</h3>
+                  <h3 style={{ marginBottom: '0.4rem' }}>{title}</h3>
                   <span className={`pill ${open ? 'pill-ok' : ''}`}>
                     {open ? 'offen' : autoExpired ? 'automatisch geschlossen' : 'geschlossen'}
                   </span>
                 </div>
                 <p style={{ fontSize: '0.9rem', color: 'var(--ink-soft)', marginBottom: '0.75rem' }}>
-                  {poll.options.length} Optionen
+                  {questionCount} {questionCount === 1 ? 'Frage' : 'Fragen'}
                   {closesAtDate && (
                     <>
                       {' · schließt automatisch am '}
@@ -97,10 +107,14 @@ export default function AdminDashboard() {
                     </>
                   )}
                 </p>
+
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <Link to={`/results/${poll.id}`} className="btn-ghost">
                     Ergebnisse ansehen
                   </Link>
+                  <button className="btn-ghost" onClick={() => setQrOpenId(qrOpen ? null : poll.id)}>
+                    {qrOpen ? 'QR-Codes ausblenden' : 'QR-Codes anzeigen'}
+                  </button>
                   <button
                     className="btn-ghost"
                     onClick={() => handleDelete(poll)}
@@ -110,6 +124,19 @@ export default function AdminDashboard() {
                     {deletingId === poll.id ? 'Wird gelöscht …' : 'Löschen'}
                   </button>
                 </div>
+
+                {qrOpen && (
+                  <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--line)' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <QrCode value={voteUrl} size={160} />
+                      <p style={{ fontSize: '0.8rem', color: 'var(--ink-soft)', marginTop: '0.4rem', marginBottom: 0 }}>Abstimmen</p>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <QrCode value={resultsUrl} size={160} />
+                      <p style={{ fontSize: '0.8rem', color: 'var(--ink-soft)', marginTop: '0.4rem', marginBottom: 0 }}>Auswertung</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}

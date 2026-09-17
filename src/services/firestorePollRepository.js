@@ -31,12 +31,14 @@ function requireCurrentUser() {
   return user
 }
 
-export async function createPoll({ question, options, resultsVisibility = 'admin', tokenCount, closesAt = null }) {
+// questions: [{ text: string, options: string[] }, ...] – eine Umfrage kann mehrere
+// Fragen enthalten (z. B. mehrere zu besetzende Positionen bei einer Wahl). Eine
+// Person stimmt mit EINEM Code über ALLE Fragen gemeinsam ab (siehe castVote unten).
+export async function createPoll({ questions, resultsVisibility = 'admin', tokenCount, closesAt = null }) {
   const admin = requireCurrentUser()
 
   const pollRef = await addDoc(pollsCol, {
-    question,
-    options,
+    questions,
     status: 'open',
     resultsVisibility, // 'admin' | 'public'
     closesAt: closesAt ? Timestamp.fromDate(closesAt) : null,
@@ -125,8 +127,11 @@ export async function deletePoll(pollId) {
 
 // Kernstück der Anonymität: In EINER Transaktion wird
 //   1. der Code als "benutzt" markiert (ohne die abgegebene Stimme zu referenzieren),
-//   2. die Stimme als komplett eigenständiges Dokument angelegt.
-// Es gibt in der Datenbank keine Spalte/Feld, das Code und Stimme miteinander verknüpft.
+//   2. EIN Stimmzettel-Dokument mit den Antworten zu ALLEN Fragen der Umfrage angelegt.
+// "answers" ist ein Array von Options-Indizes, an derselben Position wie die
+// zugehörige Frage in poll.questions (answers[0] gehört zu questions[0], usw.).
+// Es gibt in der Datenbank keine Spalte/Feld, das Code und Stimmzettel miteinander
+// verknüpft.
 //
 // Bewusst KEIN vorheriges tx.get(tokenRef): Abstimmende sind nicht die Admin-Person
 // (keine Leserechte auf die Code-Liste, siehe firestore.rules) und dürfen die
@@ -134,14 +139,14 @@ export async function deletePoll(pollId) {
 // Codes noch gültig sind. Die Prüfung "existiert der Code, ist er noch unbenutzt,
 // ist die Umfrage noch offen (manuell UND per Ablaufzeitpunkt)" läuft stattdessen
 // ausschließlich über die Schreib-Regel für tokens/{tokenId} in firestore.rules.
-export async function castVote(pollId, rawCode, optionIndex) {
+export async function castVote(pollId, rawCode, answers) {
   const tokenRef = doc(db, 'polls', pollId, 'tokens', rawCode)
   const voteRef = doc(collection(db, 'polls', pollId, 'votes'))
 
   try {
     await runTransaction(db, async (tx) => {
       tx.update(tokenRef, { used: true, usedAt: serverTimestamp() })
-      tx.set(voteRef, { optionIndex, createdAt: serverTimestamp() })
+      tx.set(voteRef, { answers, createdAt: serverTimestamp() })
     })
   } catch (err) {
     if (err.code === 'not-found') {

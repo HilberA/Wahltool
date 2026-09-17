@@ -100,6 +100,23 @@ Im Admin-Dashboard hat jede Umfrage einen "Löschen"-Button. Das entfernt das Um
 sowie alle zugehörigen Codes und Stimmen unwiderruflich (`deletePoll()` in
 `firestorePollRepository.js`).
 
+## Mehrere Fragen pro Abstimmung
+
+Eine Umfrage kann mehrere Fragen enthalten (z. B. mehrere zu besetzende Positionen bei einer
+Wahl), jede mit eigenen Antwortoptionen. `poll.questions` ist ein Array von
+`{ text, options }`. Eine Person meldet sich **einmal** mit ihrem Code an und beantwortet dabei
+alle Fragen der Umfrage in einem Stimmzettel; `castVote()` schreibt ein einziges
+Stimmzettel-Dokument mit einem `answers`-Array (ein Options-Index pro Frage, an derselben
+Position wie in `poll.questions`) – weiterhin ohne jeden Verweis auf den Code.
+
+## QR-Codes
+
+Sowohl der Abstimmungs-Link (`/vote/{pollId}`) als auch der Auswertungs-Link
+(`/results/{pollId}`) haben einen eigenen QR-Code. Direkt nach dem Erstellen werden beide
+angezeigt; im Admin-Dashboard lässt sich über "QR-Codes anzeigen" bei jeder laufenden Umfrage
+jederzeit erneut auf beide zugreifen (z. B. um sie später nochmal zu projizieren oder
+auszudrucken).
+
 ## Migrationsfreundliche Struktur
 
 Die App kennt Firebase nur an zwei Stellen:
@@ -116,8 +133,8 @@ muss dafür nicht verändert werden.
 - **Kein Schutz gegen Weitergabe von Codes**: Wenn eine Person ihren Code weitergibt, kann eine
   andere Person damit abstimmen. Für eine kleine, vertrauenswürdige Gruppe ist das meist
   akzeptabel und sogar gewollt (Person ohne eigenes Gerät nennt ihren Code).
-- **Nur Single-Choice-Fragen**: keine Mehrfachauswahl (Checkboxen). Ließe sich ergänzen, indem
-  `optionIndex` durch ein Array ersetzt und die Auswertungslogik entsprechend angepasst wird.
+- **Pro Frage nur eine Antwort (Single-Choice)**: keine Mehrfachauswahl (Checkboxen) innerhalb
+  einer einzelnen Frage. Mehrere *Fragen* pro Umfrage sind hingegen möglich (siehe oben).
 - **Admin-Konten sind nicht gegenseitig sichtbar**: Jedes Konto sieht nur seine eigenen
   Umfragen. Für ein Team mit mehreren Admin-Personen auf einem gemeinsamen Konto: einfach
   dieselben Login-Daten teilen (kein technisches Mehrbenutzer-Konzept eingebaut).
