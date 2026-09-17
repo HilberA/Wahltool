@@ -182,16 +182,26 @@ export default function AdminCreatePoll() {
 
         <div className="field">
           <label htmlFor="closesAt">Automatisch schließen am (optional)</label>
-          <input
-            id="closesAt"
-            type="datetime-local"
-            value={closesAtInput}
-            onChange={(e) => setClosesAtInput(e.target.value)}
-          />
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              id="closesAt"
+              type="datetime-local"
+              value={closesAtInput}
+              onChange={(e) => setClosesAtInput(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            {closesAtInput && (
+              <button type="button" className="btn-ghost" onClick={() => setClosesAtInput('')}>
+                Entfernen
+              </button>
+            )}
+          </div>
           <p style={{ fontSize: '0.8rem', color: 'var(--ink-soft)', marginTop: '0.35rem', marginBottom: 0 }}>
             Leer lassen, wenn du die Abstimmung nur manuell über den Button "Beenden" schließen willst.
             Beides ist gleichzeitig möglich: Du kannst jederzeit vorzeitig manuell schließen, selbst wenn
-            ein Zeitpunkt gesetzt ist.
+            ein Zeitpunkt gesetzt ist. Hinweis: Der "Zurücksetzen"-Button im Datumswähler selbst ist ein
+            iOS-Safari-Feature und funktioniert hier nicht zuverlässig – nutze stattdessen den
+            "Entfernen"-Button daneben.
           </p>
         </div>
 
