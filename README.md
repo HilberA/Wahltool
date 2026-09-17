@@ -117,6 +117,18 @@ angezeigt; im Admin-Dashboard lässt sich über "QR-Codes anzeigen" bei jeder la
 jederzeit erneut auf beide zugreifen (z. B. um sie später nochmal zu projizieren oder
 auszudrucken).
 
+## Abstimmung jederzeit verwalten
+
+Über den Button "Verwalten" im Admin-Dashboard (`/admin/poll/{pollId}`) lässt sich jederzeit –
+auch Tage nach dem Erstellen – zurückkehren, um:
+- die Codes erneut abzurufen (mit Benutzt/Offen-Status, kopierbar, druckbar)
+- bei Bedarf weitere Codes zu generieren (z. B. weil mehr Personen teilnehmen als geplant)
+- Fragen, Antwortoptionen, Sichtbarkeit und automatischen Schließzeitpunkt nachträglich zu
+  bearbeiten – am saubersten, solange noch keine Stimmen abgegeben wurden, da spätere
+  Änderungen an Fragen/Optionen bereits abgegebene Stimmzettel nicht mehr eindeutig zuordenbar
+  machen
+- die QR-Codes für Abstimmung und Auswertung erneut anzuzeigen
+
 ## Migrationsfreundliche Struktur
 
 Die App kennt Firebase nur an zwei Stellen:

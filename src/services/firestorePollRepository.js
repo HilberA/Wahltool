@@ -91,6 +91,40 @@ export async function setResultsVisibility(pollId, visibility) {
   await updateDoc(doc(db, 'polls', pollId), { resultsVisibility: visibility })
 }
 
+// Für die "Verwalten"-Seite: Inhalt (Fragen/Optionen), Sichtbarkeit und Ablaufzeitpunkt
+// nachträglich bearbeiten – z. B. wenn man eine Umfrage über mehrere Tage vorbereitet.
+export async function updatePollContent(pollId, { questions, resultsVisibility, closesAt }) {
+  requireCurrentUser()
+  await updateDoc(doc(db, 'polls', pollId), {
+    questions,
+    resultsVisibility,
+    closesAt: closesAt ? Timestamp.fromDate(closesAt) : null
+  })
+}
+
+// Liste aller Codes samt Benutzt-Status – nur für die Admin-Person lesbar (siehe
+// firestore.rules). Damit lässt sich die Codeliste jederzeit erneut abrufen, auch
+// Tage nach dem Erstellen.
+export async function getTokens(pollId) {
+  requireCurrentUser()
+  const snap = await getDocs(collection(db, 'polls', pollId, 'tokens'))
+  return snap.docs.map((d) => ({ code: d.id, ...d.data() }))
+}
+
+// Zusätzliche Codes zu einer bestehenden Umfrage generieren (z. B. weil doch mehr
+// Personen teilnehmen als ursprünglich geplant).
+export async function addTokens(pollId, count) {
+  requireCurrentUser()
+  const newTokens = generateTokens(count)
+  const batch = writeBatch(db)
+  const tokensCol = collection(db, 'polls', pollId, 'tokens')
+  newTokens.forEach((token) => {
+    batch.set(doc(tokensCol, token), { used: false, createdAt: serverTimestamp() })
+  })
+  await batch.commit()
+  return newTokens
+}
+
 // Entfernt einen gesetzten automatischen Schließzeitpunkt wieder. Falls die Umfrage
 // dadurch bereits automatisch als geschlossen galt (status ist weiterhin 'open',
 // nur closesAt lag in der Vergangenheit), ist sie danach sofort wieder offen –

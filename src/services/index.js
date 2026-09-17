@@ -11,6 +11,9 @@ export {
   deletePoll,
   clearAutoClose,
   setResultsVisibility,
+  updatePollContent,
+  getTokens,
+  addTokens,
   castVote,
   subscribeToResults
 } from './firestorePollRepository'

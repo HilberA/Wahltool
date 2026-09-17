@@ -109,6 +109,9 @@ export default function AdminDashboard() {
                 </p>
 
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <Link to={`/admin/poll/${poll.id}`} className="btn btn-primary">
+                    Verwalten
+                  </Link>
                   <Link to={`/results/${poll.id}`} className="btn-ghost">
                     Ergebnisse ansehen
                   </Link>

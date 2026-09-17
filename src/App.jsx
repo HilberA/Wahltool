@@ -1,6 +1,7 @@
 import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminCreatePoll from './pages/AdminCreatePoll'
+import AdminPollDetail from './pages/AdminPollDetail'
 import AdminLogin from './pages/AdminLogin'
 import Vote from './pages/Vote'
 import Results from './pages/Results'
@@ -54,6 +55,14 @@ export default function App() {
           element={
             <RequireAdmin>
               <AdminCreatePoll />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/poll/:pollId"
+          element={
+            <RequireAdmin>
+              <AdminPollDetail />
             </RequireAdmin>
           }
         />
