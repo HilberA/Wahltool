@@ -84,14 +84,20 @@ export async function closePoll(pollId) {
   await updateDoc(doc(db, 'polls', pollId), { status: 'closed' })
 }
 
-export async function reopenPoll(pollId) {
-  requireCurrentUser()
-  await updateDoc(doc(db, 'polls', pollId), { status: 'open' })
-}
-
 export async function setResultsVisibility(pollId, visibility) {
   requireCurrentUser()
   await updateDoc(doc(db, 'polls', pollId), { resultsVisibility: visibility })
+}
+
+// Entfernt einen gesetzten automatischen Schließzeitpunkt wieder. Falls die Umfrage
+// dadurch bereits automatisch als geschlossen galt (status ist weiterhin 'open',
+// nur closesAt lag in der Vergangenheit), ist sie danach sofort wieder offen –
+// isPollOpen() in pollStatus.js wertet ja genau closesAt + status gemeinsam aus.
+// Eine MANUELL über den "Beenden"-Button geschlossene Umfrage (status === 'closed')
+// bleibt davon unberührt; dafür gibt es bewusst keinen Reopen-Button in der UI.
+export async function clearAutoClose(pollId) {
+  requireCurrentUser()
+  await updateDoc(doc(db, 'polls', pollId), { closesAt: null })
 }
 
 async function deleteSubcollection(pollId, name) {

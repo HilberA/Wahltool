@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { getPoll, subscribeToResults, closePoll } from '../services'
+import { getPoll, subscribeToResults, closePoll, clearAutoClose } from '../services'
 import { isPollOpen, isAutoExpired, toDate } from '../services/pollStatus'
 
 function toCsv(poll, counts, total) {
@@ -83,6 +83,12 @@ export default function Results() {
     if (!confirm('Abstimmung wirklich beenden? Danach können keine weiteren Stimmen abgegeben werden.')) return
     await closePoll(pollId)
     setPoll((p) => ({ ...p, status: 'closed' }))
+  }
+
+  async function handleClearAutoClose() {
+    if (!confirm('Automatischen Schließzeitpunkt entfernen? Die Abstimmung nimmt danach wieder Stimmen an (falls sie nicht manuell beendet wurde).')) return
+    await clearAutoClose(pollId)
+    setPoll((p) => ({ ...p, closesAt: null }))
   }
 
   return (
@@ -168,6 +174,11 @@ export default function Results() {
         {poll.status === 'open' && (
           <button className="btn-ghost" onClick={handleClose}>
             Abstimmung beenden
+          </button>
+        )}
+        {poll.status === 'open' && closesAtDate && (
+          <button className="btn-ghost" onClick={handleClearAutoClose}>
+            Automatischen Ablauf zurücksetzen
           </button>
         )}
       </div>
