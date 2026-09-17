@@ -1,19 +1,43 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listMyPolls } from '../services'
+import { listMyPolls, deletePoll } from '../services'
+import { isPollOpen, isAutoExpired, toDate } from '../services/pollStatus'
+import { useAdminUser } from '../hooks/useAdminUser'
+import { adminSignOut } from '../lib/firebase'
 
 export default function AdminDashboard() {
+  const user = useAdminUser()
   const [polls, setPolls] = useState(null)
   const [error, setError] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
 
-  useEffect(() => {
+  function load() {
     listMyPolls()
       .then(setPolls)
       .catch((err) => {
         console.error(err)
         setError('Umfragen konnten nicht geladen werden.')
       })
+  }
+
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function handleDelete(poll) {
+    if (!confirm(`"${poll.question}" wirklich unwiderruflich löschen? Das kann nicht rückgängig gemacht werden.`)) return
+    setDeletingId(poll.id)
+    try {
+      await deletePoll(poll.id)
+      setPolls((prev) => prev.filter((p) => p.id !== poll.id))
+    } catch (err) {
+      console.error(err)
+      alert('Löschen fehlgeschlagen. Bitte erneut versuchen.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <div>
@@ -23,6 +47,19 @@ export default function AdminDashboard() {
           + Neue Abstimmung
         </Link>
       </div>
+
+      {user && (
+        <p style={{ fontSize: '0.85rem', color: 'var(--ink-soft)', marginTop: '-1rem', marginBottom: '1.5rem' }}>
+          Angemeldet als {user.email} ·{' '}
+          <button
+            className="btn-ghost"
+            style={{ padding: '0.2rem 0.6rem', fontSize: '0.8rem' }}
+            onClick={() => adminSignOut()}
+          >
+            Abmelden
+          </button>
+        </p>
+      )}
 
       {error && <div className="notice">{error}</div>}
 
@@ -39,22 +76,43 @@ export default function AdminDashboard() {
 
       {polls && polls.length > 0 && (
         <div>
-          {polls.map((poll) => (
-            <div className="card" key={poll.id}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <h3 style={{ marginBottom: '0.4rem' }}>{poll.question}</h3>
-                <span className={`pill ${poll.status === 'open' ? 'pill-ok' : ''}`}>
-                  {poll.status === 'open' ? 'offen' : 'geschlossen'}
-                </span>
+          {polls.map((poll) => {
+            const open = isPollOpen(poll)
+            const autoExpired = isAutoExpired(poll)
+            const closesAtDate = toDate(poll.closesAt)
+            return (
+              <div className="card" key={poll.id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <h3 style={{ marginBottom: '0.4rem' }}>{poll.question}</h3>
+                  <span className={`pill ${open ? 'pill-ok' : ''}`}>
+                    {open ? 'offen' : autoExpired ? 'automatisch geschlossen' : 'geschlossen'}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.9rem', color: 'var(--ink-soft)', marginBottom: '0.75rem' }}>
+                  {poll.options.length} Optionen
+                  {closesAtDate && (
+                    <>
+                      {' · schließt automatisch am '}
+                      {closesAtDate.toLocaleString('de-DE')}
+                    </>
+                  )}
+                </p>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <Link to={`/results/${poll.id}`} className="btn-ghost">
+                    Ergebnisse ansehen
+                  </Link>
+                  <button
+                    className="btn-ghost"
+                    onClick={() => handleDelete(poll)}
+                    disabled={deletingId === poll.id}
+                    style={{ color: 'var(--seal)', borderColor: 'var(--seal)' }}
+                  >
+                    {deletingId === poll.id ? 'Wird gelöscht …' : 'Löschen'}
+                  </button>
+                </div>
               </div>
-              <p style={{ fontSize: '0.9rem', color: 'var(--ink-soft)', marginBottom: '0.75rem' }}>
-                {poll.options.length} Optionen
-              </p>
-              <Link to={`/results/${poll.id}`} className="btn-ghost">
-                Ergebnisse ansehen
-              </Link>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

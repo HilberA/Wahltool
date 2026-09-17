@@ -9,6 +9,7 @@ export default function AdminCreatePoll() {
   const [options, setOptions] = useState(['', ''])
   const [tokenCount, setTokenCount] = useState(20)
   const [visibility, setVisibility] = useState('admin')
+  const [closesAtInput, setClosesAtInput] = useState('') // datetime-local string, optional
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
@@ -41,6 +42,14 @@ export default function AdminCreatePoll() {
       setError('Die Teilnehmerzahl muss zwischen 1 und 2000 liegen.')
       return
     }
+    let closesAt = null
+    if (closesAtInput) {
+      closesAt = new Date(closesAtInput)
+      if (closesAt <= new Date()) {
+        setError('Der automatische Schließzeitpunkt muss in der Zukunft liegen.')
+        return
+      }
+    }
 
     setBusy(true)
     try {
@@ -48,7 +57,8 @@ export default function AdminCreatePoll() {
         question: question.trim(),
         options: cleanOptions,
         resultsVisibility: visibility,
-        tokenCount: Number(tokenCount)
+        tokenCount: Number(tokenCount),
+        closesAt
       })
       setResult({ pollId, tokens })
     } catch (err) {
@@ -168,6 +178,21 @@ export default function AdminCreatePoll() {
             value={tokenCount}
             onChange={(e) => setTokenCount(e.target.value)}
           />
+        </div>
+
+        <div className="field">
+          <label htmlFor="closesAt">Automatisch schließen am (optional)</label>
+          <input
+            id="closesAt"
+            type="datetime-local"
+            value={closesAtInput}
+            onChange={(e) => setClosesAtInput(e.target.value)}
+          />
+          <p style={{ fontSize: '0.8rem', color: 'var(--ink-soft)', marginTop: '0.35rem', marginBottom: 0 }}>
+            Leer lassen, wenn du die Abstimmung nur manuell über den Button "Beenden" schließen willst.
+            Beides ist gleichzeitig möglich: Du kannst jederzeit vorzeitig manuell schließen, selbst wenn
+            ein Zeitpunkt gesetzt ist.
+          </p>
         </div>
 
         <div className="field">

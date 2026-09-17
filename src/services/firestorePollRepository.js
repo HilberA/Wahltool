@@ -10,7 +10,7 @@ import {
   addDoc,
   getDoc,
   getDocs,
-  setDoc,
+  deleteDoc,
   updateDoc,
   query,
   where,
@@ -18,21 +18,29 @@ import {
   onSnapshot,
   runTransaction,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  Timestamp
 } from 'firebase/firestore'
-import { db, ensureAdminSession } from '../lib/firebase'
+import { db, auth } from '../lib/firebase'
 import { generateTokens } from './tokenUtils'
 
 const pollsCol = collection(db, 'polls')
 
-export async function createPoll({ question, options, resultsVisibility = 'admin', tokenCount }) {
-  const admin = await ensureAdminSession()
+function requireCurrentUser() {
+  const user = auth.currentUser
+  if (!user) throw new Error('not-authenticated')
+  return user
+}
+
+export async function createPoll({ question, options, resultsVisibility = 'admin', tokenCount, closesAt = null }) {
+  const admin = requireCurrentUser()
 
   const pollRef = await addDoc(pollsCol, {
     question,
     options,
     status: 'open',
     resultsVisibility, // 'admin' | 'public'
+    closesAt: closesAt ? Timestamp.fromDate(closesAt) : null,
     ownerUid: admin.uid,
     createdAt: serverTimestamp()
   })
@@ -49,7 +57,7 @@ export async function createPoll({ question, options, resultsVisibility = 'admin
 }
 
 export async function listMyPolls() {
-  const admin = await ensureAdminSession()
+  const admin = requireCurrentUser()
   const q = query(pollsCol, where('ownerUid', '==', admin.uid), orderBy('createdAt', 'desc'))
   const snap = await getDocs(q)
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
@@ -62,13 +70,41 @@ export async function getPoll(pollId) {
 }
 
 export async function closePoll(pollId) {
-  await ensureAdminSession()
+  requireCurrentUser()
   await updateDoc(doc(db, 'polls', pollId), { status: 'closed' })
 }
 
+export async function reopenPoll(pollId) {
+  requireCurrentUser()
+  await updateDoc(doc(db, 'polls', pollId), { status: 'open' })
+}
+
 export async function setResultsVisibility(pollId, visibility) {
-  await ensureAdminSession()
+  requireCurrentUser()
   await updateDoc(doc(db, 'polls', pollId), { resultsVisibility: visibility })
+}
+
+async function deleteSubcollection(pollId, name) {
+  const colRef = collection(db, 'polls', pollId, name)
+  const snap = await getDocs(colRef)
+  const docs = snap.docs
+  const chunkSize = 450 // unter dem Firestore-Batch-Limit von 500
+  for (let i = 0; i < docs.length; i += chunkSize) {
+    const chunk = docs.slice(i, i + chunkSize)
+    const batch = writeBatch(db)
+    chunk.forEach((d) => batch.delete(d.ref))
+    await batch.commit()
+  }
+}
+
+// Löscht eine Umfrage vollständig: erst die Codes und Stimmen (Unterkollektionen),
+// dann das Umfrage-Dokument selbst. Firestore löscht Unterkollektionen NICHT
+// automatisch mit, deshalb die explizite Reihenfolge.
+export async function deletePoll(pollId) {
+  requireCurrentUser()
+  await deleteSubcollection(pollId, 'tokens')
+  await deleteSubcollection(pollId, 'votes')
+  await deleteDoc(doc(db, 'polls', pollId))
 }
 
 // Kernstück der Anonymität: In EINER Transaktion wird
@@ -79,11 +115,9 @@ export async function setResultsVisibility(pollId, visibility) {
 // Bewusst KEIN vorheriges tx.get(tokenRef): Abstimmende sind nicht die Admin-Person
 // (keine Leserechte auf die Code-Liste, siehe firestore.rules) und dürfen die
 // Code-Liste auch nicht einsehen können – sonst ließe sich durchprobieren, welche
-// Codes noch gültig sind. Die Prüfung "existiert der Code, ist er noch unbenutzt"
-// läuft stattdessen ausschließlich über die Schreib-Regel für tokens/{tokenId}
-// (resource.data.used == false). Firestore lehnt den update()-Teil der Transaktion
-// ab, wenn der Code nicht existiert (not-found) oder schon benutzt wurde
-// (permission-denied) – beides fangen wir hier anhand des Fehlercodes ab.
+// Codes noch gültig sind. Die Prüfung "existiert der Code, ist er noch unbenutzt,
+// ist die Umfrage noch offen (manuell UND per Ablaufzeitpunkt)" läuft stattdessen
+// ausschließlich über die Schreib-Regel für tokens/{tokenId} in firestore.rules.
 export async function castVote(pollId, rawCode, optionIndex) {
   const tokenRef = doc(db, 'polls', pollId, 'tokens', rawCode)
   const voteRef = doc(collection(db, 'polls', pollId, 'votes'))

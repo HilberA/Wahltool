@@ -3,6 +3,14 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function pollData(pollId) {
+      return get(/databases/$(database)/documents/polls/$(pollId)).data;
+    }
+
+    function isOwner(pollId) {
+      return request.auth != null && pollData(pollId).ownerUid == request.auth.uid;
+    }
+
     match /polls/{pollId} {
       // Fragestellung/Optionen/Status sind über den Link öffentlich lesbar
       // (sonst könnte der Stimmzettel gar nicht angezeigt werden).
@@ -14,36 +22,38 @@ service cloud.firestore {
       allow update: if request.auth != null
                     && resource.data.ownerUid == request.auth.uid;
 
-      allow delete: if false;
+      allow delete: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid;
 
       match /tokens/{tokenId} {
-        // Die Token-Liste selbst darf nur die Admin-Person einsehen.
-        allow read: if request.auth != null
-                    && get(/databases/$(database)/documents/polls/$(pollId)).data.ownerUid == request.auth.uid;
+        // Die Code-Liste selbst darf nur die Admin-Person einsehen.
+        allow read: if isOwner(pollId);
 
-        allow create: if request.auth != null
-                      && get(/databases/$(database)/documents/polls/$(pollId)).data.ownerUid == request.auth.uid;
+        allow create: if isOwner(pollId);
 
-        // Ein Token darf nur EINMAL von "nicht benutzt" auf "benutzt" wechseln,
-        // und es dürfen dabei ausschließlich diese beiden Felder verändert werden.
+        // Ein Code darf nur EINMAL von "nicht benutzt" auf "benutzt" wechseln,
+        // dabei dürfen ausschließlich diese beiden Felder verändert werden – UND
+        // die zugehörige Umfrage muss gerade offen sein: manuell (status == 'open')
+        // UND, falls gesetzt, noch vor ihrem automatischen Ablaufzeitpunkt.
         allow update: if resource.data.used == false
                       && request.resource.data.used == true
-                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used', 'usedAt']);
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used', 'usedAt'])
+                      && pollData(pollId).status == 'open'
+                      && (pollData(pollId).closesAt == null || request.time < pollData(pollId).closesAt);
 
-        allow delete: if false;
+        allow delete: if isOwner(pollId);
       }
 
       match /votes/{voteId} {
-        // Stimmen enthalten absichtlich keinen Verweis auf den Token oder eine
+        // Stimmen enthalten absichtlich keinen Verweis auf den Code oder eine
         // Nutzer-Identität – nur die gewählte Option.
         allow create: if request.resource.data.keys().hasOnly(['optionIndex', 'createdAt'])
                       && request.resource.data.optionIndex is int;
 
-        allow read: if get(/databases/$(database)/documents/polls/$(pollId)).data.resultsVisibility == 'public'
-                    || (request.auth != null
-                        && get(/databases/$(database)/documents/polls/$(pollId)).data.ownerUid == request.auth.uid);
+        allow read: if pollData(pollId).resultsVisibility == 'public' || isOwner(pollId);
 
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isOwner(pollId);
       }
     }
   }

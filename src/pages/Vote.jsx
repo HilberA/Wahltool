@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getPoll, castVote } from '../services'
 import { normalizeCodeInput } from '../services/tokenUtils'
+import { isPollOpen } from '../services/pollStatus'
 
 // step: 'code' (Code eingeben) -> 'ballot' (auswählen) -> 'done' (bestätigt)
 // Nach 'done' kann über "Nächste Person" wieder zu 'code' gesprungen werden,
@@ -23,7 +24,7 @@ export default function Vote() {
       .then((p) => {
         if (!p) {
           setLoadError('Diese Abstimmung wurde nicht gefunden.')
-        } else if (p.status !== 'open') {
+        } else if (!isPollOpen(p)) {
           setLoadError('Diese Abstimmung ist bereits beendet.')
         } else {
           setPoll(p)

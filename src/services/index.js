@@ -8,6 +8,8 @@ export {
   listMyPolls,
   getPoll,
   closePoll,
+  reopenPoll,
+  deletePoll,
   setResultsVisibility,
   castVote,
   subscribeToResults

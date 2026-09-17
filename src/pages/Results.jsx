@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { getPoll, subscribeToResults, closePoll } from '../services'
+import { isPollOpen, isAutoExpired, toDate } from '../services/pollStatus'
 
 function toCsv(poll, counts, total) {
   const rows = [['Option', 'Stimmen', 'Anteil']]
@@ -73,6 +74,10 @@ export default function Results() {
   })
   const total = votes.length
   const maxCount = Math.max(1, ...poll.options.map((_, i) => counts[i] || 0))
+  const open = isPollOpen(poll)
+  const autoExpired = isAutoExpired(poll)
+  const closesAtDate = toDate(poll.closesAt)
+  const generatedAt = new Date().toLocaleString('de-DE')
 
   async function handleClose() {
     if (!confirm('Abstimmung wirklich beenden? Danach können keine weiteren Stimmen abgegeben werden.')) return
@@ -82,15 +87,27 @@ export default function Results() {
 
   return (
     <div>
+      <div className="print-only" style={{ display: 'none', marginBottom: '1rem', fontSize: '0.8rem', color: 'var(--ink-soft)' }}>
+        Erstellt am {generatedAt}
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <h2>{poll.question}</h2>
-        <span className={`pill ${poll.status === 'open' ? 'pill-ok' : ''}`}>
-          {poll.status === 'open' ? 'offen' : 'geschlossen'}
+        <span className={`pill ${open ? 'pill-ok' : ''}`}>
+          {open ? 'offen' : autoExpired ? 'automatisch geschlossen' : 'geschlossen'}
         </span>
       </div>
-      <p style={{ color: 'var(--ink-soft)' }}>{total} Stimme{total === 1 ? '' : 'n'} bisher · aktualisiert live</p>
+      <p style={{ color: 'var(--ink-soft)' }}>
+        {total} Stimme{total === 1 ? '' : 'n'} bisher · aktualisiert live
+        {closesAtDate && (
+          <>
+            {' · schließt automatisch am '}
+            {closesAtDate.toLocaleString('de-DE')}
+          </>
+        )}
+      </p>
 
-      <div className="card">
+      <div className="card chart-card">
         {poll.options.map((option, i) => {
           const c = counts[i] || 0
           const pct = total > 0 ? Math.round((c / total) * 100) : 0
@@ -109,6 +126,34 @@ export default function Results() {
           )
         })}
       </div>
+
+      <table className="print-only results-table">
+        <thead>
+          <tr>
+            <th>Option</th>
+            <th>Stimmen</th>
+            <th>Anteil</th>
+          </tr>
+        </thead>
+        <tbody>
+          {poll.options.map((option, i) => {
+            const c = counts[i] || 0
+            const pct = total > 0 ? Math.round((c / total) * 100) : 0
+            return (
+              <tr key={i}>
+                <td>{option}</td>
+                <td>{c}</td>
+                <td>{pct}%</td>
+              </tr>
+            )
+          })}
+          <tr>
+            <td><strong>Gesamt</strong></td>
+            <td><strong>{total}</strong></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
 
       <div className="card" style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
         <button
