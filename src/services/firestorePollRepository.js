@@ -14,7 +14,6 @@ import {
   updateDoc,
   query,
   where,
-  orderBy,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -58,9 +57,20 @@ export async function createPoll({ question, options, resultsVisibility = 'admin
 
 export async function listMyPolls() {
   const admin = requireCurrentUser()
-  const q = query(pollsCol, where('ownerUid', '==', admin.uid), orderBy('createdAt', 'desc'))
+  // Bewusst OHNE orderBy() in der Firestore-Abfrage: die Kombination aus
+  // where(ownerUid) + orderBy(createdAt) würde einen zusammengesetzten Index
+  // verlangen, den man in der Firebase-Konsole manuell anlegen müsste. Stattdessen
+  // wird hier im Browser sortiert – bei der überschaubaren Anzahl an Umfragen einer
+  // kleinen Gruppe macht das keinen spürbaren Unterschied.
+  const q = query(pollsCol, where('ownerUid', '==', admin.uid))
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  const polls = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  polls.sort((a, b) => {
+    const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0
+    const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0
+    return bTime - aTime
+  })
+  return polls
 }
 
 export async function getPoll(pollId) {
